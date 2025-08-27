@@ -44,7 +44,7 @@ def _transpose_cu_operator(oper):
             perm_callback = perm
             if batch_dims_callback:
                 perm_callback += (2 * N,)
-                
+
             @oper.callback.__class__
             def new_callback(t, _):
                 # TODO: copy needed?
@@ -720,6 +720,14 @@ def isequal_CuOperator(left, right, atol=-1, rtol=-1):
     if left.shape[0] > 1000:
         return left is right
     return np.allclose(left.to_array(), right.to_array(), rtol, atol)
+
+
+@_data.one_element.register(CuOperator)
+def one_element_CuOperator(shape, position, value=None):
+    if shape[0] == shape[1]:
+        return CuOperator(_data.one_element["Dia"](shape, position, value))
+    else:
+        return _data.one_element["Dense"](shape, position, value)
 
 
 ###############################################################################
