@@ -72,7 +72,7 @@ class CuQobjEvo(QobjEvo):
         )
         return out
 
-    def expect(self, t, state, check_real=True):
+    def expect(self, t, state, check_real=False):
         """
         Expectation value of this operator at time ``t`` with the state.
 
