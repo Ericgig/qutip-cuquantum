@@ -307,6 +307,26 @@ class StochasticResult(MultiTrajResult):
 
         return new
 
+    def _reduce_expect(self, trajectory, *, abs=None, rel=None):
+        """
+        Compute the average of the expectation values and store it in it's
+        multiple formats.
+        """
+        if abs is not None:
+            self._sum_det.reduce_expect(trajectory, abs)
+        else:
+            self._sum_rel.reduce_expect(trajectory, rel)
+
+            if self.runs_e_data:
+                if rel == 1:
+                    for k in self._raw_ops:
+                        self.runs_e_data[k].append(trajectory.e_data[k])
+                else:
+                    # Batched
+                    for k in self._raw_ops:
+                        per_traj = list(np.array(trajectory.e_data[k]).T)
+                        self.runs_e_data[k].extend(per_traj)
+
 
 class _StochasticRHS(_MultiTrajRHS):
     """
