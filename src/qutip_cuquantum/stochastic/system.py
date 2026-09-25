@@ -176,3 +176,59 @@ class PyStochasticOpenSystem:
 
     def L0a(self):
         raise NotImplementedError
+
+
+
+class PyStochasticClosedSystem:
+    """
+        RHS for open quantum stochastic system (smesolve)
+
+        drift = -1H * psi
+              + sum_i (-c_i.dag * c_i / 2 + c_i * e_i / 2 - e_i**2 / 8) * psi
+
+        e_i = <psi| c_i + c_i.dag |psi>
+
+        diffusion = (c_i - e_i / 2) * psi
+    """
+    def __init__(self, H, sc_ops):
+        self.L = -1j * H
+        self.c_ops = sc_ops
+        self.cpcd_ops = [op + op.dag() for op in sc_ops]
+
+        self.num_collapse = len(self.c_ops)
+        for c_op in self.c_ops:
+            self.L += -0.5 * c_op.dag() * c_op
+
+        self.state_size = self.L.shape[1]
+
+    def drift(self, t, state, out=None):
+        out = self.L.matmul_data(t, state)
+        for i in range(self.num_collapse):
+            c_op = self.cpcd_ops[i]
+            e = c_op.expect_data(t, state)
+            c_op = self.c_ops[i]
+            temp = c_op.matmul_data(t, state)
+            out = _data.add(out, state,  -0.125 * e * e)
+            out = _data.add(out, temp, 0.5 * e)
+        return out
+
+    def diffusion(self, t, state, out=None):
+        if out is None:
+            out = [None] * self.num_collapse
+
+        for i in range(self.num_collapse):
+            c_op = self.c_ops[i]
+            vec = c_op.matmul_data(t, state)
+            c_op = self.cpcd_ops[i]
+            expect = c_op.expect_data(t, state)
+            out[i] = _data.iadd(vec, state, -0.5 * expect)
+        return out
+
+    def expect(self, t, state):
+        return [
+            c_op.expect_data(t, state)
+            for c_op in self.cpcd_ops
+        ]
+
+    def set_state(self, t, state):
+        raise NotImplementedError

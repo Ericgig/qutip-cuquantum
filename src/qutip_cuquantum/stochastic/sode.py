@@ -5,7 +5,7 @@ from qutip.core.data import imul, iadd
 from qutip.solver.sode.sode import _Explicit_Simple_Integrator
 from qutip.solver.sode._noise import Wiener, PreSetWiener
 from qutip.solver.integrator.integrator import Integrator
-from .smesolve import SMESolver
+from .smesolve import SMESolver, SSESolver
 from .batching import batch_copy, BatchCoefficient
 from ..state import CuState
 from ..qobjevo import CuQobjEvo
@@ -130,10 +130,8 @@ class Explicit_Simple_Integrator_Batched(_Explicit_Simple_Integrator):
                 (self.N_dw, num_collapse)
             )
         self.rhs._register_feedback(self.wiener)
-        if self.rhs.issuper:
-            rhs = self.rhs(self.options)
-        else:
-            raise NotImplementedError("Only open system are implemented yet.")
+        rhs = self.rhs(self.options)
+
         stepper = self.stepper(rhs, **stepper_opt)
         self.step_func = stepper.run
 
@@ -1024,6 +1022,8 @@ class RouchonSODE(Explicit_Simple_Integrator_Batched):
 SMESolver.add_integrator(RouchonSODE, "rouchon")
 SMESolver.add_integrator(EulerSODE, "euler")
 SMESolver.add_integrator(PlatenSODE, "platen")
+SSESolver.add_integrator(EulerSODE, "euler")
+SSESolver.add_integrator(PlatenSODE, "platen")
 SMESolver.add_integrator(Explicit1_5_SODE, "explicit1.5")
 SMESolver.add_integrator(Milstein_SODE, "milstein")
 SMESolver.add_integrator(PredCorr_SODE, "pred_corr")

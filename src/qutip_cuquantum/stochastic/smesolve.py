@@ -23,7 +23,7 @@ from qutip.solver.parallel import _get_map
 from qutip.typing import QobjEvoLike, EopsLike
 from qutip.settings import settings
 
-from .system import PyStochasticOpenSystem
+from .system import PyStochasticOpenSystem, PyStochasticClosedSystem
 from ..qobjevo import CuQobjEvo
 from ..state import CuState
 
@@ -387,8 +387,11 @@ class _StochasticRHS(_MultiTrajRHS):
             out.c_ops = [CuQobjEvo(op) for op in out.c_ops]
             return out
         else:
-            raise NotImplementedError
-            return StochasticClosedSystem(self.H, self.sc_ops)
+            out = PyStochasticClosedSystem(self.H, self.sc_ops)
+            out.L = CuQobjEvo(out.L)
+            out.c_ops = [CuQobjEvo(op) for op in out.c_ops]
+            out.cpcd_ops = [CuQobjEvo(op) for op in out.cpcd_ops]
+            return out
 
     def arguments(self, args):
         self.H.arguments(args)
@@ -921,5 +924,3 @@ class SSESolver(StochasticSolver):
         "method": "platen",
         "store_measurement": "",
     }
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError
