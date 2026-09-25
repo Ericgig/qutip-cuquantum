@@ -1,19 +1,14 @@
 .. _gpu_stochastic_solvers:
 
-==========================================
-GPU-Accelerated Stochastic Solvers (SME)
-==========================================
+==================================
+GPU-Accelerated Stochastic Solvers
+==================================
 
 The ``qutip_cuquantum`` package provides GPU-accelerated versions of QuTiP's stochastic solvers,
-allowing you to simulate Stochastic Master Equations (SME) at scale.
+allowing you to simulate Stochastic Master Equations (SME) and Stochastic Schrodinger Equations at scale.
 This solver execute trajectories in parallel using **batching** directly on the GPU.
 This approach significantly outperforms traditional CPU-based multiprocessing for large systems
 or high trajectory counts.
-
-.. note::
-
-   Currently, only the Stochastic Master Equation solver (:class:`SMESolver`) is implemented on the GPU.
-   The Stochastic Schrödinger Equation solver (:class:`SSESolver`) is not yet implemented.
 
 
 GPU Batching
@@ -24,8 +19,8 @@ the GPU solver processes a **batch** of trajectories simultaneously in a single 
 A new solver option ``"batch"`` is introduced to control the size of these parallel chunks.
 
 
-Basic Usage Example
-===================
+Basic Usage Example: SMESolver
+==============================
 
 To run an SME simulation on the GPU,
 you must build your operators within the :class:`CuQuantumBackend` context manager.
@@ -71,8 +66,8 @@ You can then configure the :class:`SMESolver` almost identically to QuTiP's, but
         c_ops=[],
         heterodyne=False,
         options={
-            "method": "platen",  # Supported SDE integration method are listed bellow
-            "batch": 10,         # Run 10 trajectories in parallel on the GPU
+            "method": "platen",
+            "batch": 10,  # Run 10 trajectories in parallel on the GPU
             "dt": 0.001,
             "store_final_state": False,
             "keep_runs_results": True,
@@ -91,6 +86,9 @@ You can then configure the :class:`SMESolver` almost identically to QuTiP's, but
         seeds=1023
     )
 
+Supported SDE methods for ``SMESolver``: ``"euler"``, ``"rouchon"``, ``"platen"``, ``"milstein"``, ``"pred_corr"``, ``"explicit1.5"``.
+See `QuTiP's API documentation <https://qutip.readthedocs.io/en/stable/apidoc/solver.html#stochastic-integrator>`_ for details.
+
 .. note::
 
   * With the same seed, operators, parameters, and options, the results will be identical to those obtained with
@@ -103,6 +101,76 @@ You can then configure the :class:`SMESolver` almost identically to QuTiP's, but
   * **The "map" option limits**: While the ``map`` option is still present in the configuration dictionary,
     only the default ``"serial"`` map is expected to work.
     There is currently no mechanism for individual multiprocessing workers to instantiate and manage their own CUDA ``WorkStream``.
+
+Basic Usage Example: SSESolver
+==============================
+
+Stochastic Schrödinger simulations are very similar; ``qutip_cuquantum``'s ``SSESolver`` matches QuTiP's core features:
+
+.. code-block:: python
+
+    import qutip as qt
+    import numpy as np
+    from qutip_cuquantum import CuQuantumBackend, SSESolver
+    from cuquantum.densitymat import WorkStream
+
+    # 1. Initialize the cuQuantum local WorkStream.
+    # Note: MPI and batching do not work together.
+    ctx = WorkStream()
+
+    # Define system dimensions
+    N = 3
+
+    # 2. Build your operators inside the CuQuantumBackend context
+    with CuQuantumBackend(ctx):
+        a = qt.destroy(N)
+        I = qt.qeye(N)
+        n = qt.num(N)
+
+        # Hamiltonian and collapse operators
+        H = (n & n)
+        a0 = a & a
+        a1 = I & a.dag()
+
+        # Expectation operators
+        e1 = I & n
+        e2 = n & I
+        e3 = (n & I) + (I & n)
+
+    # 3. Define the initial state (can be built outside the context)
+    psi0 = qt.basis(N, N-1) & qt.basis(N, N-1)
+
+    # 4. Instantiate the SSESolver with GPU batching options
+    sol = SSESolver(
+        H,
+        sc_ops=[a0, a1],
+        heterodyne=False,
+        options={
+            "method": "platen",
+            "batch": 10,         # Run 10 trajectories in parallel on the GPU
+            "dt": 0.001,
+            "store_final_state": False,
+            "keep_runs_results": True,
+            "store_measurement": True,
+            "progress_bar": False,
+        }
+    )
+
+    # 5. Run the simulation
+    tlist = np.linspace(0, 0.1, 21)
+    result = sol.run(
+        psi0,
+        tlist,
+        e_ops={"e1": e1, "e2": e2, "e3": e3},
+        ntraj=10,
+        seeds=1023
+    )
+
+    print(result.average_e_data["e1"])
+
+
+Supported SDE methods for ``SSESolver``: ``"euler"``, ``"rouchon"``, and ``"platen"``.
+See `QuTiP's API documentation <https://qutip.readthedocs.io/en/stable/apidoc/solver.html#stochastic-integrator>`_ for a description of each method.
 
 
 Memory Management & Batch Size Optimization
