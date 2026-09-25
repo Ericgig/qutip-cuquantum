@@ -178,7 +178,6 @@ class PyStochasticOpenSystem:
         raise NotImplementedError
 
 
-
 class PyStochasticClosedSystem:
     """
         RHS for open quantum stochastic system (smesolve)

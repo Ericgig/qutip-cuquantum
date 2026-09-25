@@ -71,7 +71,6 @@ class BatchWiener:
         return self.last_W
 
 
-
 class Explicit_Simple_Integrator_Batched(_Explicit_Simple_Integrator):
 
     integrator_options = {
@@ -814,8 +813,6 @@ class RouchonSODE(Explicit_Simple_Integrator_Batched):
         self._options = self.integrator_options.copy()
         self.options = options
         self.rhs = rhs
-        if not rhs.issuper:
-            raise NotImplementedError
 
     def _make_operators(self):
         rhs = self.rhs
@@ -933,6 +930,7 @@ class RouchonSODE(Explicit_Simple_Integrator_Batched):
         else:
             state0 = CuState(state0, self.M_l.hilbert_space_dims)
             self.state = batch_copy(state0, self.batch)
+        print(self.state.shape, self.state.base.view().shape)
 
         self._tmp = _data.zeros_like(self.state)
         self._out = _data.zeros_like(self.state)
@@ -982,12 +980,16 @@ class RouchonSODE(Explicit_Simple_Integrator_Batched):
         self._tmp = _data.imul(self._tmp, 0)
         self._out = _data.imul(self._out, 0)
 
-        self._tmp = self.M_l.matmul_data(t, state, self._tmp)
-        self._out = self.M_r.matmul_data(t, self._tmp, self._out)
-        if self.C:
-            self._out = self.C.matmul_data(t, state, self._out)
+        if self._issuper:
+            self._tmp = self.M_l.matmul_data(t, state, self._tmp)
+            self._out = self.M_r.matmul_data(t, self._tmp, self._out)
+            if self.C:
+                self._out = self.C.matmul_data(t, state, self._out)
 
-        self._out = _data.imul(self._out, 1/_data.trace_oper_ket(self._out))
+            self._out = _data.imul(self._out, 1/_data.trace_oper_ket(self._out))
+        else:
+            self._out = self.M_l.matmul_data(t, state, self._out)
+            self._out = _data.imul(self._out, 1/_data.norm.l2(self._out))
         return self._out
 
     @property
@@ -1022,8 +1024,11 @@ class RouchonSODE(Explicit_Simple_Integrator_Batched):
 SMESolver.add_integrator(RouchonSODE, "rouchon")
 SMESolver.add_integrator(EulerSODE, "euler")
 SMESolver.add_integrator(PlatenSODE, "platen")
-SSESolver.add_integrator(EulerSODE, "euler")
-SSESolver.add_integrator(PlatenSODE, "platen")
 SMESolver.add_integrator(Explicit1_5_SODE, "explicit1.5")
 SMESolver.add_integrator(Milstein_SODE, "milstein")
 SMESolver.add_integrator(PredCorr_SODE, "pred_corr")
+
+SSESolver.add_integrator(EulerSODE, "euler")
+SSESolver.add_integrator(PlatenSODE, "platen")
+SSESolver.add_integrator(RouchonSODE, "rouchon")
+# SSESolver.add_integrator(Explicit1_5_SODE, "explicit1.5")  Bugged
