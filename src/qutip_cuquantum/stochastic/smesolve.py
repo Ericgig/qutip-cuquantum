@@ -1,7 +1,7 @@
 # Required for Sphinx to follow autodoc_type_aliases
 from __future__ import annotations
 
-__all__ = ["SMESolver"]
+__all__ = ["SMESolver", "SSESolver"]
 
 import numpy as np
 from numpy.typing import ArrayLike

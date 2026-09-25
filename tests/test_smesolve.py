@@ -6,6 +6,7 @@ from cuquantum.densitymat import WorkStream
 
 from qutip_cuquantum import CuQuantumBackend
 from qutip_cuquantum import SMESolver as CuSMESolver
+from qutip_cuquantum import SSESolver as CuSSESolver
 
 
 ctx = WorkStream()
@@ -54,22 +55,38 @@ def compare_evolution(
     out_1 = solver1.run(psi0, tlist, e_ops=e_ops, ntraj=ntraj, seeds=seed)
     out_2 = solver2.run(psi0, tlist, e_ops=e_ops, ntraj=ntraj, seeds=seed)
 
+    assert np.array(out_1.average_expect).shape == np.array(out_2.average_expect).shape
+    assert np.array(out_1.runs_expect).shape == np.array(out_2.runs_expect).shape
+    assert np.array(out_1.measurement).shape == np.array(out_2.measurement).shape
+
     for idx in range(len(e_ops)):
         np.testing.assert_allclose(
-            out_1.average_expect[idx].real,
-            out_2.average_expect[idx].real,
+            out_1.average_expect[idx],
+            out_2.average_expect[idx],
             rtol=rtol,
             atol=atol,
         )
+        if out_1.runs_expect:
+            np.testing.assert_allclose(
+                out_1.runs_expect[idx],
+                out_2.runs_expect[idx],
+                rtol=rtol,
+                atol=atol,
+            )
 
     if compare_measurement:
         np.testing.assert_allclose(
-            out_1.measurement[0].real.squeeze(),
-            out_2.measurement[0].real.squeeze(),
+            out_1.measurement[0].squeeze(),
+            out_2.measurement[0].squeeze(),
             rtol=rtol,
             atol=atol,
         )
 
+
+common_sse_method = (
+    set(CuSSESolver.avail_integrators().keys())
+    & set(qutip.SSESolver.avail_integrators().keys())
+)
 
 common_sme_method = (
     set(CuSMESolver.avail_integrators().keys())
@@ -117,7 +134,6 @@ def test_sme_solver_gpu_vs_cpu(method, H_td, sc_td, heterodyne):
     )
 
 
-
 @pytest.mark.parametrize("method", common_sme_method)
 @pytest.mark.parametrize("batch_size", [1, 2, 3, 10, 11])
 def test_sme_solver_batching(method, batch_size):
@@ -128,7 +144,7 @@ def test_sme_solver_batching(method, batch_size):
     options = {
         "method": method,
         "store_final_state": False,
-        "keep_runs_results": False,
+        "keep_runs_results": True,
         "store_measurement": True,
         "progress_bar": False,
         "dt": 0.001
@@ -148,6 +164,84 @@ def test_sme_solver_batching(method, batch_size):
         H, sc_ops, c_ops, _, psi0 = setup_operators(3, 1, False, False, True)
     gpu_sol = CuSMESolver(
         H, sc_ops=sc_ops, c_ops=c_ops, heterodyne=False, options=gpu_options
+    )
+
+    compare_evolution(
+        cpu_sol, gpu_sol, psi0, e_ops, ntraj=10,
+        rtol=1e-8, atol=1e-10, compare_measurement=True,
+    )
+
+
+@pytest.mark.parametrize("method", common_sse_method)
+@pytest.mark.parametrize("H_td", [False, True])
+@pytest.mark.parametrize("sc_td", [False, True])
+@pytest.mark.parametrize("heterodyne", [False, True])
+def test_sse_solver_gpu_vs_cpu(method, H_td, sc_td, heterodyne):
+    """
+    Validates that the GPU-backed cuquantum SMESolver yields results
+    matching the CPU-backed QuTiP SMESolver for identical seeds.
+    """
+    options = {
+        "method": method,
+        "store_final_state": False,
+        "keep_runs_results": False,
+        "store_measurement": True,
+        "progress_bar": False,
+        "dt": 0.001
+    }
+
+    H, sc_ops, _, e_ops, psi0 = setup_operators(3, 2, H_td, sc_td)
+    cpu_sol = qutip.SSESolver(
+        H, sc_ops=sc_ops, heterodyne=heterodyne, options=options
+    )
+
+    gpu_options = options.copy()
+    gpu_options["batch"] = 1
+
+    with CuQuantumBackend(ctx):
+        # We use the Dia format e_ops as it should be handle better in
+        # qutip_cuquantum SMEsolve than the oposite.
+        H, sc_ops, _, _, psi0 = setup_operators(3, 2, H_td, sc_td)
+    gpu_sol = CuSSESolver(
+        H, sc_ops=sc_ops, heterodyne=heterodyne, options=gpu_options
+    )
+
+    compare_evolution(
+        cpu_sol, gpu_sol, psi0, e_ops,
+        rtol=1e-8, atol=1e-10, compare_measurement=True,
+    )
+
+
+@pytest.mark.parametrize("method", common_sse_method)
+@pytest.mark.parametrize("batch_size", [1, 2, 3, 10, 11])
+def test_sse_solver_batching(method, batch_size):
+    """
+    Validates that the GPU-backed cuquantum SMESolver yields results
+    matching the CPU-backed QuTiP SMESolver for identical seeds.
+    """
+    options = {
+        "method": method,
+        "store_final_state": False,
+        "keep_runs_results": True,
+        "store_measurement": True,
+        "progress_bar": False,
+        "dt": 0.001
+    }
+
+    H, sc_ops, c_ops, e_ops, psi0 = setup_operators(3, 1, False, False, True)
+    cpu_sol = qutip.SSESolver(
+        H, sc_ops=sc_ops, heterodyne=False, options=options
+    )
+
+    gpu_options = options.copy()
+    gpu_options["batch"] = batch_size
+
+    with CuQuantumBackend(ctx):
+        # We use the Dia format e_ops as it should be handle better in
+        # qutip_cuquantum SMEsolve than the oposite.
+        H, sc_ops, c_ops, _, psi0 = setup_operators(3, 1, False, False, True)
+    gpu_sol = CuSSESolver(
+        H, sc_ops=sc_ops, heterodyne=False, options=gpu_options
     )
 
     compare_evolution(
